@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from .models import CustomUser
 from django.contrib.auth import authenticate
+from .models import CustomUser
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -18,8 +18,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             phone_number=validated_data.get('phone_number', ''),
             is_active=False
         )
+        user.generate_activation_token()
         return user
-    
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField()
@@ -28,17 +29,12 @@ class LoginSerializer(serializers.Serializer):
         username = data.get('username')
         password = data.get('password')
 
-        try:
-            user = CustomUser.objects.get(username=username)
-        except CustomUser.DoesNotExist:
-            raise serializers.ValidationError("Invalid credentials.")
-
-        if not user.is_active:
-            raise serializers.ValidationError("Account not activated. Please check your email to activate your account.")
-
         user = authenticate(username=username, password=password)
         if user is None:
             raise serializers.ValidationError("Invalid credentials.")
+
+        if not user.is_active:
+            raise serializers.ValidationError("Account not activated. Please check your email.")
 
         return {'user': user}
 
