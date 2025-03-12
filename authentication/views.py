@@ -12,23 +12,54 @@ from django.core.mail import send_mail
 from .models import CustomUser
 
 link = "https://mizzaria.onrender.com/"
+from django.contrib.auth.tokens import default_token_generator
+import logging
+
+# Configure un logger
+logger = logging.getLogger(__name__)
+
 class RegisterView(APIView):
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            activation_url = f"{link}api/auth/activate/{uid}/{token}/"
-            send_mail(
-                'Activate Your Account',
-                f'Click here to activate your account: {activation_url}',
-                'from@example.com',
-                [user.email],
-                fail_silently=False,
+        try:
+            logger.info("Received registration request with data: %s", request.data)
+            serializer = RegisterSerializer(data=request.data)
+            if serializer.is_valid():
+                logger.info("Serializer is valid, saving user")
+                user = serializer.save()
+                logger.info("User saved successfully: %s", user.username)
+                
+                # Génère le token et l'UID pour l'activation
+                token = default_token_generator.make_token(user)
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                logger.info("Generated token and UID: %s, %s", token, uid)
+
+                # Envoie l'email d'activation (ajuste l'URL pour Render)
+                activation_url = f"https://{request.get_host()}/api/auth/activate/{uid}/{token}/"  # Utilise l'hôte dynamique
+                logger.info("Sending activation email to: %s with URL: %s", user.email, activation_url)
+                send_mail(
+                    'Activate Your Account',
+                    f'Click here to activate your account: {activation_url}',
+                    'from@example.com',
+                    [user.email],
+                    fail_silently=False,
+                )
+                logger.info("Activation email sent successfully")
+                return Response(
+                    {"detail": "Account created. Check your email to activate.", "status": status.HTTP_201_CREATED},
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                logger.warning("Serializer errors: %s", serializer.errors)
+                return Response(
+                    {"error": serializer.errors, "status": status.HTTP_400_BAD_REQUEST},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            logger.error("Unexpected error in RegisterView: %s", str(e), exc_info=True)
+            return Response(
+                {"error": "Internal server error", "status": status.HTTP_500_INTERNAL_SERVER_ERROR},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            return Response({"detail": "Account created. Check your email to activate.", "status": status.HTTP_201_CREATED}, status=status.HTTP_201_CREATED)
-        return Response({"error": serializer.errors, "status": status.HTTP_400_BAD_REQUEST}, status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(APIView):
     def post(self, request):
